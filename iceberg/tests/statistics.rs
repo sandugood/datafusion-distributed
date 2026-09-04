@@ -7,11 +7,12 @@ mod tests {
     use datafusion::datasource::source::DataSourceExec;
     use datafusion::error::Result;
     use datafusion::physical_plan::{ExecutionPlan, displayable};
-    use datafusion_distributed_iceberg::test_utils::IcebergTestHarness;
+    use datafusion_distributed_iceberg::test_utils::{FIXTURE_URI, IcebergTestHarness};
     use datafusion_distributed_iceberg::{IcebergDataSource, IcebergExt};
 
     // Took values from testdata/iceberg/taxi/metadata/v1.metadata.json snapshot summary.
     // Under `snapshots` key in the JSON
+    const TAXI_SNAPSHOT_ID: i64 = 3_167_948_105_555_765_929;
     const TAXI_ROWS: usize = 175_000;
     const TAXI_BYTES: usize = 4_480_382;
     const TAXI_COLUMNS: usize = 13;
@@ -200,6 +201,23 @@ mod tests {
         | 175000   |
         +----------+
         ");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reports_statistics_for_the_selected_snapshot() -> Result<()> {
+        let harness = IcebergTestHarness::new().await?;
+        harness
+            .query(&format!(
+                "CREATE EXTERNAL TABLE taxi_snapshot STORED AS ICEBERG \
+                 LOCATION '{FIXTURE_URI}/metadata/v1.metadata.json' \
+                 OPTIONS ('iceberg.snapshot_id' '{TAXI_SNAPSHOT_ID}')"
+            ))
+            .await?;
+        let stats = source_statistics(&harness, "SELECT * FROM taxi_snapshot").await?;
+
+        assert_eq!(stats.num_rows, Precision::Exact(TAXI_ROWS));
+        assert_eq!(stats.total_byte_size, Precision::Exact(TAXI_BYTES));
         Ok(())
     }
 
